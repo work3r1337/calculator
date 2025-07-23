@@ -1,4 +1,5 @@
 #include <ctype.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -6,8 +7,11 @@
 
 #define MAX_TOKEN_SIZE 10
 #define MAX_BUFFER_SIZE 100
-#define VALID_TOKENS \
-    { "+", "-", "*", "/", "(", ")", "u" }
+#define VALID_TOKENS                                                         \
+    {                                                                        \
+        "+", "-", "*", "/", "(", ")", "u", "tan", "ctg", "sin", "cos", "ln", \
+            "sqrt"                                                           \
+    }
 #define VALID_TOKENS_SIZE \
     (int)(sizeof(valid_tokens) / (sizeof(char) * MAX_TOKEN_SIZE))
 
@@ -16,6 +20,7 @@ typedef enum {
     TOKEN_OPERATOR,
     TOKEN_LBRACKET,
     TOKEN_RBRACKET,
+    TOKEN_FUNCTION,
     TOKEN_END
 } TokenType;
 
@@ -113,25 +118,41 @@ Status infix_to_postfix(char str[]) {
         } else if (type == TOKEN_LBRACKET) {
             push(&stack, token);
         } else if (type == TOKEN_RBRACKET) {
-            if (pop(&stack, tmp_token) == ERROR) status = ERROR;
+            peek(&stack, tmp_token);
             while (!is_empty(&stack) && strcmp(tmp_token, "(") != 0) {
                 int i = 0;
+                if (pop(&stack, tmp_token) == ERROR) status = ERROR;
                 while (tmp_token[i] != '\0') buffer[index++] = tmp_token[i++];
                 buffer[index++] = ' ';
-                if (pop(&stack, tmp_token) == ERROR) status = ERROR;
+                peek(&stack, tmp_token);
             }
-        } else {
+            pop(&stack, tmp_token);
+        } else if (type == TOKEN_OPERATOR) {
             if (last_type == TOKEN_OPERATOR) status = ERROR;
-            if (!is_empty(&stack)) peek(&stack, tmp_token);
+            peek(&stack, tmp_token);
             while (!is_empty(&stack) &&
                    get_priority(tmp_token) >= get_priority(token)) {
                 if (pop(&stack, tmp_token) == ERROR) status = ERROR;
                 int i = 0;
                 while (tmp_token[i] != '\0') buffer[index++] = tmp_token[i++];
                 buffer[index++] = ' ';
+                peek(&stack, tmp_token);
             }
             push(&stack, token);
-        }
+        } else if (type == TOKEN_FUNCTION) {
+            if (last_type == TOKEN_FUNCTION) status = ERROR;
+            peek(&stack, tmp_token);
+            while (!is_empty(&stack) &&
+                   get_priority(tmp_token) >= get_priority(token)) {
+                if (pop(&stack, tmp_token) == ERROR) status = ERROR;
+                int i = 0;
+                while (tmp_token[i] != '\0') buffer[index++] = tmp_token[i++];
+                buffer[index++] = ' ';
+                peek(&stack, tmp_token);
+            }
+            push(&stack, token);
+        } else
+            status = ERROR;
         last_type = type;
     }
     while (!is_empty(&stack)) {
@@ -186,6 +207,30 @@ Status calc_rpn(char str[], double *result) {
             if (pop(&stack, tmp_token1) == ERROR) status = ERROR;
             sprintf(tmp, "%lf", -atof(tmp_token1));
             push(&stack, tmp);
+        } else if (strcmp(token, "tan") == 0) {
+            if (pop(&stack, tmp_token1) == ERROR) status = ERROR;
+            sprintf(tmp, "%lf", tan(atof(tmp_token1)));
+            push(&stack, tmp);
+        } else if (strcmp(token, "ctg") == 0) {
+            if (pop(&stack, tmp_token1) == ERROR) status = ERROR;
+            sprintf(tmp, "%lf", 1.0 / tan(atof(tmp_token1)));
+            push(&stack, tmp);
+        } else if (strcmp(token, "sin") == 0) {
+            if (pop(&stack, tmp_token1) == ERROR) status = ERROR;
+            sprintf(tmp, "%lf", sin(atof(tmp_token1)));
+            push(&stack, tmp);
+        } else if (strcmp(token, "cos") == 0) {
+            if (pop(&stack, tmp_token1) == ERROR) status = ERROR;
+            sprintf(tmp, "%lf", cos(atof(tmp_token1)));
+            push(&stack, tmp);
+        } else if (strcmp(token, "ln") == 0) {
+            if (pop(&stack, tmp_token1) == ERROR) status = ERROR;
+            sprintf(tmp, "%lf", log(atof(tmp_token1)));
+            push(&stack, tmp);
+        } else if (strcmp(token, "sqrt") == 0) {
+            if (pop(&stack, tmp_token1) == ERROR) status = ERROR;
+            sprintf(tmp, "%lf", sqrt(atof(tmp_token1)));
+            push(&stack, tmp);
         } else
             status = ERROR;
     }
@@ -233,19 +278,20 @@ TokenType get_token(char **str, char token[], TokenType last_type) {
         token[i] = '\0';
         ungetch(str);
         return TOKEN_NUMBER;
-    } else if (token[i] == '-' &&
-               (last_type == TOKEN_OPERATOR || last_type == TOKEN_END ||
-                last_type == TOKEN_LBRACKET)) {
+    } else if (token[i] == '-' && last_type != TOKEN_NUMBER) {
         token[0] = 'u';
         return TOKEN_OPERATOR;
     } else if (token[i] == '(') {
         return TOKEN_LBRACKET;
     } else if (token[i] == ')') {
         return TOKEN_RBRACKET;
-    } else {
+    } else if (isalpha(token[i])) {
         while (isalpha(token[++i] = getch(str)));
         token[i] = '\0';
         ungetch(str);
+        return TOKEN_FUNCTION;
+    } else {
+        token[++i] = '\0';
         return TOKEN_OPERATOR;
     }
 }
@@ -255,8 +301,12 @@ int get_priority(const char token[]) {
         return 1;
     else if (strcmp(token, "*") == 0 || strcmp(token, "/") == 0)
         return 2;
-    else if (strcmp(token, "u") == 0)
+    else if (strcmp(token, "tan") == 0 || strcmp(token, "ctg") == 0 ||
+             strcmp(token, "sin") == 0 || strcmp(token, "cos") == 0 ||
+             strcmp(token, "ln") == 0 || strcmp(token, "sqrt") == 0)
         return 3;
+    else if (strcmp(token, "u") == 0)
+        return 4;
     else
         return 0;
 }
